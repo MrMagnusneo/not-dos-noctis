@@ -144,7 +144,7 @@ void greenmush (float x, float y, float z,
 		fast_srand (((Dword)x>>14) + ((Dword)y>>14) + ((Dword)z>>14));
 
 	m1 = 1 + fast_random (mask_1);
-	for (n1 = 0; n1 < m1; n1++)
+	for (n1 = 0; n1 < m1; n1++) {
 		Dword rz = fast_random (scaling);
 		Dword ryy = fast_random (scaling);
 		Dword rxx = fast_random (scaling);
@@ -163,6 +163,7 @@ void greenmush (float x, float y, float z,
 				adapted[(Uword)(di-640)] = cl;
 			}
 		}
+	}
 }
 
 void build_fractal_tree (float x, float y, float z,
@@ -265,14 +266,14 @@ void build_fractal_tree (float x, float y, float z,
 			fy[3] = y2;
 			polycolor = 9 * occurrence;
 			for (rotation = 0; rotation <= rlimit; rotation += branchdetail) {
-				fx[0] = x  + lft_cos[rotation               ] * widthscale1;
-				fz[0] = z  + lft_sin[rotation               ] * widthscale1;
-				fx[1] = x  + lft_cos[rotation + branchdetail] * widthscale1;
-				fz[1] = z  + lft_sin[rotation + branchdetail] * widthscale1;
-				fx[2] = x2 + lft_cos[rotation + branchdetail] * widthscale2;
-				fz[2] = z2 + lft_sin[rotation + branchdetail] * widthscale2;
-				fx[3] = x2 + lft_cos[rotation               ] * widthscale2;
-				fz[3] = z2 + lft_sin[rotation               ] * widthscale2;
+				fx[0] = x  + lft_cos[(Word)(rotation)] * widthscale1;
+				fz[0] = z  + lft_sin[(Word)(rotation)] * widthscale1;
+				fx[1] = x  + lft_cos[(Word)(rotation + branchdetail)] * widthscale1;
+				fz[1] = z  + lft_sin[(Word)(rotation + branchdetail)] * widthscale1;
+				fx[2] = x2 + lft_cos[(Word)(rotation + branchdetail)] * widthscale2;
+				fz[2] = z2 + lft_sin[(Word)(rotation + branchdetail)] * widthscale2;
+				fx[3] = x2 + lft_cos[(Word)(rotation)] * widthscale2;
+				fz[3] = z2 + lft_sin[(Word)(rotation)] * widthscale2;
 				if (isrootnode) {
 					fy[0] = hpoint (fx[0], fz[0]);
 					fy[1] = hpoint (fx[1], fz[1]);
@@ -305,12 +306,12 @@ void build_fractal_tree (float x, float y, float z,
 			for (rotation = 0; rotation <= rlimit; rotation += branchdetail) {
 				rot2 = rotation + 72; if (rot2 > 359) rot2 -= 360;
 				rot3 = rotation + 36; if (rot3 > 359) rot3 -= 360;
-				fx[0] = x  + lft_cos[rotation]	* widthscale1;
-				fz[0] = z  + lft_sin[rotation]	* widthscale1;
-				fx[1] = x  + lft_cos[rot2]	* widthscale1;
-				fz[1] = z  + lft_sin[rot2]	* widthscale1;
-				fx[2] = x2 + lft_cos[rot3]	* range + wdircos;
-				fz[2] = z2 + lft_sin[rot3]	* range + wdirsin;
+				fx[0] = x  + lft_cos[(Word)(rotation)]	* widthscale1;
+				fz[0] = z  + lft_sin[(Word)(rotation)]	* widthscale1;
+				fx[1] = x  + lft_cos[(Word)(rot2)]	* widthscale1;
+				fz[1] = z  + lft_sin[(Word)(rot2)]	* widthscale1;
+				fx[2] = x2 + lft_cos[(Word)(rot3)]	* range + wdircos;
+				fz[2] = z2 + lft_sin[(Word)(rot3)]	* range + wdirsin;
 				polymap (fx, fy, fz, 3, polycolor + leafcolormask);
 				greenmush (fx[2], fy[2], fz[2], 15, 3, 1023, 223, 31, 0);
 				polycolor += 2;
@@ -664,7 +665,7 @@ void live_animal (Word n)
 	double	incl;
 	float	period;
 	Word	sqc_x, sqc_z;
-	Dword 	tick = 18 * secs;
+	Dword 	tick = to_i32 (18 * secs);
 	float	dx, dy, dz, ax, ay, ay2, az;
 
 	float	update_ratio, tendence_to_stop; // mammals
@@ -974,11 +975,11 @@ void live_animal (Word n)
 		modpv (mamm_result, mamm_wrap_center_p, mamm_wrap_center_v,
 		       1, 1, 1, 0, ani_pitch[n] + 180, 0, NULL);
 		// visualizzazione:
-		mamm_trace:
+		mamm_trace:;
 		drawpv (mamm_result, 1, 0, ax, ay, az, perform_depth_sort);
 	}
 
-    end_vicinity:
+    end_vicinity:;
 }
 
 /*
@@ -1494,8 +1495,10 @@ void round_hill (Word cx, Word cz, Uword r, float h, float hmax, char allowcanyo
 	float dx, dz, d;
 	float y, v = (float)r / M_PI_2;
 
-	for (x = cx-r; x < cx+r; x++)
-		for (z = cz-r; z < cz+r; z++) {
+	// (int vs unsigned comparisons were unsigned in 16-bit Borland C:
+	//  hills whose box starts at negative coordinates were skipped)
+	for (x = cx-r; (Uword)x < (Uword)(cx+r); x++)
+		for (z = cz-r; (Uword)z < (Uword)(cz+r); z++) {
 			if (x>-1&&z>-1&&x<200&&z<200) {
 				dx = x - cx;
 				dz = z - cz;
@@ -1733,7 +1736,8 @@ Word average_of_y (Word ic, Word jc, Word ra)
 
 	for (jp = jc - ra; jp < jc + ra; jp++) {
 		for (ip = ic - ra; ip < ic + ra; ip++) {
-			av += p_surfacemap[pt];
+			pt = m200[(Uword)jp % 200] + ip; // (uninitialised in the original)
+			av += p_surfacemap[(Uword)pt];
 			ai++;
 		}
 	}
@@ -2026,7 +2030,7 @@ void build_surface ()
 
 	// veniamo all'ambiente di superficie...
 	// esso dipende strettamente dalle coordinate di sbarco.
-	fast_srand (landing_pt_lat * landing_pt_lon);
+	fast_srand ((Dword)(Word)(landing_pt_lat * landing_pt_lon));
 	srand (landing_pt_lat * landing_pt_lon);
 
 	switch (nearstar_p_type[ip_targetted]) {
@@ -2048,9 +2052,12 @@ void build_surface ()
 			while (n) {
 				hf = (float)random(32) * 0.01;
 				hr = (float)(random(20) + 5) * 0.075;
-				std_crater (p_surfacemap,
-					    random(200), random(200),
-					    random(50) + 5, 127, hf, hr, 200);
+				{ // (arguments evaluated right to left, as in Borland C++)
+					auto _seq3 = random(50) + 5;
+					auto _seq2 = random(200);
+					auto _seq1 = random(200);
+					std_crater (p_surfacemap, _seq1, _seq2, _seq3, 127, hf, hr, 200);
+				}
 				n--;
 			}
 			n = random(48) + 64 - albedo;
@@ -2080,10 +2087,13 @@ void build_surface ()
 			n = albedo + random (100);
 			while (n) { // basse colline e frequenti altipiani,
 				    // oceani e mari sono rari ma possibili...
-				round_hill (random(200),
-					    random(200),
-					    random(100) + 50,
-					    random( 50) + 10, 0, 1);
+				{ // (arguments evaluated right to left, as in Borland C++)
+					auto _seq3 = random( 50) + 10;
+					auto _seq2 = random(100) + 50;
+					auto _seq1 = random(200);
+					auto _seq0 = random(200);
+					round_hill (_seq0, _seq1, _seq2, _seq3, 0, 1);
+				}
 				n--;
 			}
 			// per i dettagli di superficie, due scenari possibili:
@@ -2152,13 +2162,18 @@ void build_surface ()
 					if (!random(3)) {
 						cx = random(100) + 50;
 						cz = random(100) + 50;
-						round_hill (cx + random(15),
-							    cz + random(15),
-							    random(100) + 25,
-							    random(10) + 1, 0, 1);
-						round_hill (cx, cz,
-							    random(100) + 25,
-							    random(100) +  1, 0, 1);
+						{ // (arguments evaluated right to left, as in Borland C++)
+							auto _seq3 = random(10) + 1;
+							auto _seq2 = random(100) + 25;
+							auto _seq1 = cz + random(15);
+							auto _seq0 = cx + random(15);
+							round_hill (_seq0, _seq1, _seq2, _seq3, 0, 1);
+						}
+						{ // (arguments evaluated right to left, as in Borland C++)
+							auto _seq3 = random(100) + 1;
+							auto _seq2 = random(100) + 25;
+							round_hill (cx, cz, _seq2, _seq3, 0, 1);
+						}
 						waswet = 1;
 						goto addtrees;
 					}
@@ -2192,10 +2207,13 @@ void build_surface ()
 						// nell'un caso, le pianure.
 						ptr = random(50) + 5;
 						while (ptr) {
-							round_hill (random(200),
-								    random(200),
-								    random(200) + 1,
-								    random( 30) + 1, 0, 1);
+							{ // (arguments evaluated right to left, as in Borland C++)
+								auto _seq3 = random( 30) + 1;
+								auto _seq2 = random(200) + 1;
+								auto _seq1 = random(200);
+								auto _seq0 = random(200);
+								round_hill (_seq0, _seq1, _seq2, _seq3, 0, 1);
+							}
 							ptr--;
 						}
 					}
@@ -2203,10 +2221,13 @@ void build_surface ()
 						// nell'altro caso, i monti.
 						ptr = random(25) + 10;
 						while (ptr) {
-							round_hill (random(200),
-								    random(200),
-								    random(200) + 1,
-								    random(100) + 1, 0, 1);
+							{ // (arguments evaluated right to left, as in Borland C++)
+								auto _seq3 = random(100) + 1;
+								auto _seq2 = random(200) + 1;
+								auto _seq1 = random(200);
+								auto _seq0 = random(200);
+								round_hill (_seq0, _seq1, _seq2, _seq3, 0, 1);
+							}
 							ptr--;
 						}
 					}
@@ -2239,9 +2260,15 @@ void build_surface ()
 					}
 					n = 100 + random (500);
 					while (n) {
-						asterism (txtr, random(256), random(256),
-							  random(16), random(16), random(25) + 6,
-							  random(15) + 6, 256);
+						{ // (arguments evaluated right to left, as in Borland C++)
+							auto _seq6 = random(15) + 6;
+							auto _seq5 = random(25) + 6;
+							auto _seq4 = random(16);
+							auto _seq3 = random(16);
+							auto _seq2 = random(256);
+							auto _seq1 = random(256);
+							asterism (txtr, _seq1, _seq2, _seq3, _seq4, _seq5, _seq6, 256);
+						}
 						n--;
 					}
 					// quasi mai si rende visibile
@@ -2305,22 +2332,34 @@ void build_surface ()
 							break;
 						case 1:	// brulla distesa di
 							// ghiaccio permanente
-							rockyground (10 + random(10), 1 + random(2), 0);
+							{ // (arguments evaluated right to left, as in Borland C++)
+								auto _seq1 = 1 + random(2);
+								auto _seq0 = 10 + random(10);
+								rockyground (_seq0, _seq1, 0);
+							}
 							frosty = 1;
 							break;
 						case 2: // colline di neve...
 							ptr = random (50) + 50;
 							while (ptr) {
-								round_hill (random(200),
-									    random(200),
-									    random(200) + 1,
-									    random( 75) + 1, 0, 1);
+								{ // (arguments evaluated right to left, as in Borland C++)
+									auto _seq3 = random( 75) + 1;
+									auto _seq2 = random(200) + 1;
+									auto _seq1 = random(200);
+									auto _seq0 = random(200);
+									round_hill (_seq0, _seq1, _seq2, _seq3, 0, 1);
+								}
 								ptr--;
 							}
 							snowy = 1;
 							break;
 						case 3: // e anche icebergs...
-							rockyground (50 + random(50), 3 + random(3), -(random(40) + 20));
+							{ // (arguments evaluated right to left, as in Borland C++)
+								auto _seq2 = -(random(40) + 20);
+								auto _seq1 = 3 + random(3);
+								auto _seq0 = 50 + random(50);
+								rockyground (_seq0, _seq1, _seq2);
+							}
 							frosty = 1;
 							break;
 					}
@@ -2351,7 +2390,11 @@ void build_surface ()
 						T_SCALE = 16 + random(48);
 						n = random (250);
 						while (n) {
-							srf_darkline (txtr, 100 + random(200), -random(2), 0, 256);
+							{ // (arguments evaluated right to left, as in Borland C++)
+								auto _seq2 = -random(2);
+								auto _seq1 = 100 + random(200);
+								srf_darkline (txtr, _seq1, _seq2, 0, 256);
+							}
 							n--;
 						}
 					}
@@ -2376,7 +2419,11 @@ void build_surface ()
 			// il terreno ' piuttosto liscio, di per s',
 			// con dislivelli simili a colline molto schiacciate,
 			// che possono essere inframezzate da ampie pianure...
-			rockyground (15, 3 + random (3), -random(5));
+			{ // (arguments evaluated right to left, as in Borland C++)
+				auto _seq2 = -random(5);
+				auto _seq1 = 3 + random (3);
+				rockyground (15, _seq1, _seq2);
+			}
 
 			// e ora si aggiungono i pietroni della descrizione.
 			// pu' anche non essercene nessuno, in un quadrante...
@@ -2386,9 +2433,11 @@ void build_surface ()
 				hr = hf * (flandom() * 3.5 + 3.5);
 				ht = hr * (flandom() * 0.2 + 0.3);
 				if (ht > 127) ht = 127;
-				round_hill (random(200),
-					    random(200),
-					    hf, hr, ht, 0);
+				{ // (arguments evaluated right to left, as in Borland C++)
+					auto _seq1 = random(200);
+					auto _seq0 = random(200);
+					round_hill (_seq0, _seq1, hf, hr, ht, 0);
+				}
 				n--;
 			}
 
@@ -2443,9 +2492,12 @@ void build_surface ()
 			while (n) {
 				hf = (float)random(5) * 0.015;
 				hr = (float)(random(10) + 10) * 0.27;
-				std_crater (p_surfacemap,
-					    random(200), random(200),
-					    random(35) + 5, 127, hf, hr, 200);
+				{ // (arguments evaluated right to left, as in Borland C++)
+					auto _seq3 = random(35) + 5;
+					auto _seq2 = random(200);
+					auto _seq1 = random(200);
+					std_crater (p_surfacemap, _seq1, _seq2, _seq3, 127, hf, hr, 200);
+				}
 				n--;
 			}
 			// molte pietre e pietruzze... s', s'...
@@ -2467,9 +2519,12 @@ void build_surface ()
 				rockdensity = 15 + 16 * random(2);
 				hf = (float)random(5) * 0.01;
 				hr = (float)(random(5) + 5) * 0.5;
-				std_crater (p_surfacemap,
-					    90 + random(20), 90 + random(20),
-					    100 + random(10), 127, hf, hr, 200);
+				{ // (arguments evaluated right to left, as in Borland C++)
+					auto _seq3 = 100 + random(10);
+					auto _seq2 = 90 + random(20);
+					auto _seq1 = 90 + random(20);
+					std_crater (p_surfacemap, _seq1, _seq2, _seq3, 127, hf, hr, 200);
+				}
 			}
 			// e per quanto riguarda i dettagli sulla superficie,
 			// roba molto irregolare: crepe, sassi e buche...
@@ -2498,7 +2553,12 @@ void build_surface ()
 			}
 			n = albedo + random(100) - random (50); if (n<0) n = 0;
 			n /= 2; while (n) { // ma s', anche qualche crepetta pi' piccola, sparsa...
-				srf_darkline (txtr, random(100), -random(2), -random(2), 256);
+				{ // (arguments evaluated right to left, as in Borland C++)
+					auto _seq3 = -random(2);
+					auto _seq2 = -random(2);
+					auto _seq1 = random(100);
+					srf_darkline (txtr, _seq1, _seq2, _seq3, 256);
+				}
 				n--;
 			}
 			// pietre? poche. qualcuna, di media taglia...
@@ -2514,10 +2574,12 @@ void build_surface ()
 				ptr = 100 - albedo;
 				while (ptr) {
 					hr = random (300);
-					round_hill (random(150) + 25,
-						    random(150) + 25,
-						    random(  5) + 2,
-						    hr + 1, 127, 0);
+					{ // (arguments evaluated right to left, as in Borland C++)
+						auto _seq2 = random( 5) + 2;
+						auto _seq1 = random(150) + 25;
+						auto _seq0 = random(150) + 25;
+						round_hill (_seq0, _seq1, _seq2, hr + 1, 127, 0);
+					}
 					ptr--;
 				}
 				smoothterrain (2 + random(3));
@@ -2526,10 +2588,13 @@ void build_surface ()
 			// o da agglomerati informi...
 			ptr = (100 - albedo) * 2;
 			while (ptr) {
-				round_hill (random(200),
-					    random(200),
-					    random( 25) + 1,
-					    random( 25) + 1, 0, 1);
+				{ // (arguments evaluated right to left, as in Borland C++)
+					auto _seq3 = random( 25) + 1;
+					auto _seq2 = random( 25) + 1;
+					auto _seq1 = random(200);
+					auto _seq0 = random(200);
+					round_hill (_seq0, _seq1, _seq2, _seq3, 0, 1);
+				}
 				ptr--;
 			}
 			// abbastanza roccioso, s'... direi.
@@ -2616,7 +2681,7 @@ void build_surface ()
 	// di certo cambia in minuscoli particolari, perch' si direbbe
 	// generalmente costante.
 
-	fast_srand (landing_pt_lat * landing_pt_lon);
+	fast_srand ((Dword)(Word)(landing_pt_lat * landing_pt_lon));
 	srand (landing_pt_lat * landing_pt_lon);
 
 	if ((Dword)(nearstar_identity * 1E6) == -37828) {
@@ -3192,7 +3257,7 @@ void setup_animals ()
 				goto anitypeselected;
 			}
 		}
-		anitypeselected:
+		anitypeselected:;
 	}
 
 	// impostazione posizione attuale e dati accessori sugli animali.
@@ -3226,16 +3291,28 @@ void setup_animals ()
 	fast_srand (global_surface_seed);
 
 	// mammiferi:
-	loadpv (mamm_base, mammal_ncc,
-		1, 0.5 + 0.5*flandom(), 0.75 + 0.5*flandom(),
-		0, 0, 0, fast_random(0xC0), 1);
-	modpv (mamm_base, -1, -1, 2*flandom(), 2*flandom(), 2*flandom(), 45 - 90 * flandom(), 0, 0, mamm_ears);
+	{ // (arguments evaluated right to left, as in Borland C++)
+		auto _seq8 = fast_random(0xC0);
+		auto _seq4 = 0.75 + 0.5*flandom();
+		auto _seq3 = 0.5 + 0.5*flandom();
+		loadpv (mamm_base, mammal_ncc, 1, _seq3, _seq4, 0, 0, 0, _seq8, 1);
+	}
+	{ // (arguments evaluated right to left, as in Borland C++)
+		auto _seq6 = 45 - 90 * flandom();
+		auto _seq5 = 2*flandom();
+		auto _seq4 = 2*flandom();
+		auto _seq3 = 2*flandom();
+		modpv (mamm_base, -1, -1, _seq3, _seq4, _seq5, _seq6, 0, 0, mamm_ears);
+	}
 	loadpv (mamm_result, mammal_ncc, 1, 1, 1, 0, 0, 0, 0x80, 1);
 
 	// uccelli:
-	loadpv (bird_base, birdy_ncc,
-		1, 0.3 + flandom(), 0.75 + flandom(),
-		0, 0, 0, fast_random(0xC0), 1);
+	{ // (arguments evaluated right to left, as in Borland C++)
+		auto _seq8 = fast_random(0xC0);
+		auto _seq4 = 0.75 + flandom();
+		auto _seq3 = 0.3 + flandom();
+		loadpv (bird_base, birdy_ncc, 1, _seq3, _seq4, 0, 0, 0, _seq8, 1);
+	}
 	loadpv (bird_result, birdy_ncc, 1, 1, 1, 0, 0, 0, 0x80, 1);
 }
 
@@ -3412,7 +3489,7 @@ void planetary_main ()
 	// Dissolvenza al nero (blank frame).
 	for (w=64; w>=0; w-=4) {
 		tavola_colori (return_palette, 0, 256, w, w, w);
-		ll = clock(); while (ll == clock());
+		dos_wait_tick ();
 	}
 
 	// regolazione della forza di gravit'.
@@ -3613,7 +3690,7 @@ void planetary_main ()
 			// per le caratteristiche generali del pianeta...
 			srand (landing_pt_lon * landing_pt_lat);
 			if (random(100) > 5) {
-				cpos   = 555 * nearstar_p_orb_orient[ip_targetted];
+				cpos   = to_i32 (555 * nearstar_p_orb_orient[ip_targetted]);
 				sctype = (cpos % 4) + 1;
 			}
 			else
@@ -3648,9 +3725,9 @@ void planetary_main ()
    (cambia solo con la latitudine, ma ' previsto che sia cos', dato
    che bisogna differenziare gli ambienti caldi da quelli freddi). */
 
-	global_surface_seed = (nearstar_p_ray[ip_targetted]
+	global_surface_seed = to_i32 ((nearstar_p_ray[ip_targetted]
 			      + nearstar_p_orb_ray[ip_targetted]
-			      + nearstar_p_orb_orient[ip_targetted]) * 4112;
+			      + nearstar_p_orb_orient[ip_targetted]) * 4112);
 
 	if (nearstar_p_type[ip_targetted] == 3) {
 		srand (global_surface_seed + landing_pt_lon);
@@ -3690,7 +3767,7 @@ void planetary_main ()
 	Word	resolve = 1;
 	float	fixed_step = 0;
 
-	Word	ih, oh, i9997, i9998, i9999;
+	Word	ih, oh, i9997 = -1, i9998 = -1, i9999 = -1;
 	char	t[54];
 	Dword	prog;
 	Dword	line;
@@ -4380,7 +4457,7 @@ void planetary_main ()
 				}
 				wr[w] += wd[w];
 				wh[w] /= 1.025;
-				prox:
+				prox:;
 			}
 			// reimpostazione dei normali parametri
 			// per il texturing...
@@ -4492,7 +4569,7 @@ void planetary_main ()
 	  	if (fcs_status_delay>0) {
 			Word len = strlen(fcs_status_extended);
 			len = len+len;
-			wrouthud(160-len, 100, NULL, fcs_status_extended);
+			wrouthud(160-len, 100, 0, fcs_status_extended);
 			fcs_status_delay--;
 		}
 		
@@ -4596,7 +4673,7 @@ void planetary_main ()
 				ih = sa_open (header_bmp);
 				if (ih==NOFILE) goto wserror;
 				READFILE (ih, t, 54);
-				t[18] = 0x94;
+				t[18] = (char)0x94;
 				t[19] = 0x03;
 				CLOSEFILE (ih);
 				prog = lastSnapshot;
@@ -4697,6 +4774,11 @@ void planetary_main ()
 			}	
 		}
 		// controllo tastiera.
+		// (Linux port: closing the window while not landed just leaves.)
+		if (port_quit_requested () && !landed) {
+			exitflag = 1;
+			goto nodissolve;
+		}
 		while (tasto_premuto()) {
 			w = attendi_pressione_tasto();
 			if (!w) {
@@ -4920,7 +5002,7 @@ void planetary_main ()
 				}
 			}
 		}
-		endtype:
+		endtype:;
 	} while (1);
 
 	/* operazioni di recupero per ritornare al ciclo principale. */
@@ -4928,7 +5010,7 @@ void planetary_main ()
 	// Dissolvenza al nero (blank frame di ritorno).
 	for (w=64; w>=0; w-=4) {
 		tavola_colori (surface_palette, 0, 256, w, w, w);
-		ll = clock(); while (ll == clock());
+		dos_wait_tick ();
 	}
 
     nodissolve:

@@ -55,6 +55,7 @@ typedef int FastBool;
 #define tell         dos_tell
 #define filelength   dos_filelength
 #define eof          dos_eof
+#define chsize       dos_chsize
 #define strupr       dos_strupr
 #define memicmp      dos_memicmp
 #define gcvt         dos_gcvt
@@ -67,6 +68,16 @@ typedef int FastBool;
 #define remove(x)    dos_remove(x)
 #define mkdir(x)     dos_mkdir(x)
 #define fopen(a, b)  dos_fopen(a, b)
+#define OPENFILE(f, m)       _open (f, m)
+#define READFILE(fh, p, l)   _read (fh, p, l)
+#define WRITEFILE(fh, p, l)  _write (fh, p, l)
+#define CLOSEFILE(fh)        _close (fh)
+#define NOFILE               -1
+#define OPEN_RB              0
+#define OPEN_RPLUS           4
+
+// The engine's roll angle would clash with gamma() from <cmath>.
+#define gamma noctis_gamma
 
 typedef int32_t clock_t_dos;
 #define clock_t clock_t_dos

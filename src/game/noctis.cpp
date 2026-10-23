@@ -5,10 +5,9 @@
 
 */
 
-#include "defs.h"                //NICE defines
 #include "noctis-d.h"
 #include "noctis-0.h"
-#include "noctis-2.h"
+#include "../goes/goes.h"
 const double deg = M_PI / 180;
 
 extern char exitflag;
@@ -262,129 +261,59 @@ void pointer_cross_for (double xlight, double ylight, double zlight)
 		rx /= rz; rx += x_centro;
 		ry /= rz; ry += y_centro - 2;
 		if (rx>10&&ry>10&&rx<310&&ry<190) {
-			_SI = 320*(Word)ry + rx;
-			asm {	les di, dword ptr adapted
-				add di, si
-				mov al, 126
-				mov es:[di-320*7-7], al
-				mov es:[di-320*6-6], al
-				mov es:[di-320*5-5], al
-				mov es:[di-320*4-4], al
-				mov es:[di+320*4+4], al
-				mov es:[di+320*5+5], al
-				mov es:[di+320*6+6], al
-				mov es:[di+320*7+7], al
-				mov es:[di-320*7+7], al
-				mov es:[di-320*6+6], al
-				mov es:[di-320*5+5], al
-				mov es:[di-320*4+4], al
-				mov es:[di+320*4-4], al
-				mov es:[di+320*5-5], al
-				mov es:[di+320*6-6], al
-				mov es:[di+320*7-7], al }
+			{
+				Uword si = to_u16 (320*(Word)ry + rx);
+				static const Word d[16][2] = {
+					{-7,-7},{-6,-6},{-5,-5},{-4,-4},{4,4},{5,5},{6,6},{7,7},
+					{-7,7},{-6,6},{-5,5},{-4,4},{4,-4},{5,-5},{6,-6},{7,-7} };
+				for (Word k = 0; k < 16; k++)
+					adapted[(Uword)(si + 320*d[k][0] + d[k][1])] = 126;
+			}
 		}
 	}
 }
 
 /* Scrive sullo schermo del computer di bordo: una linea. */
 
-void cline (Word line, char *text)
+void cline (Word line, const char *text)
 {
-	asm {   push ds
-		push ds
-		pop es
-		lea di, ctb
-		shl line, 7
-		add di, line
-		add di, 20
-		lds si, dword ptr text }
-byter:	asm {	cmp byte ptr [si], 0
-		je endline
-		movsb
-		jmp byter }
-endline:asm {   mov point, di
-		pop ds }
+	Uword di = (Uword)(line << 7) + 20;
+	while (*text) ctb[di++ & 511] = *text++;
+	point = di;
 }
 
 /* Prosegue la linea suddetta. */
 
-void other (char *text)
+void other (const char *text)
 {
-	asm {   push ds
-		push ds
-		pop es
-		mov di, point
-		lds si, dword ptr text }
-byter:	asm {	cmp byte ptr [si], 0
-		je endline
-		movsb
-		jmp byter }
-endline:asm {   mov point, di
-		pop ds }
+	Uword di = point;
+	while (*text) ctb[di++ & 511] = *text++;
+	point = di;
 }
 
 /* Scrive il titolo di un controllo di sistema (sono 4 in tutto). */
 
-void control (Word line, char *text)
+void control (Word line, const char *text)
 {
-	asm {   push ds
-		push ds
-		pop es
-		lea di, ctb
-		dec line
-		shl line, 7
-		add di, line
-		lds si, dword ptr text }
-byter:	asm {	cmp byte ptr [si], 0
-		je endline
-		movsb
-		jmp byter }
-endline:asm 	pop ds
+	Uword di = (Uword)((line - 1) << 7);
+	while (*text) ctb[di++ & 511] = *text++;
 }
 
 /* Scrive il titolo di un comando. */
 
-void command (Word nr, char *text)
+void command (Word nr, const char *text)
 {
-	asm {   push ds
-		push ds
-		pop es
-		lea di, ctb
-		add di, 20
-		dec nr
-		mov ax, nr
-		mov dx, 27
-		mul dx
-		add di, ax
-		mov ax, 27
-		lds si, dword ptr text }
-byter:	asm {	cmp byte ptr [si], 0
-		je endline
-		movsb
-		dec ax
-		jnz byter }
-endline:asm {	test ax, ax
-		jz endwork
-		mov byte ptr es:[di], 32
-		inc di
-		dec ax
-		jnz endline }
-endwork:asm  	pop ds
+	Uword di = 20 + (nr - 1) * 27;
+	Word n = 27;
+	while (*text && n) { ctb[di++ & 511] = *text++; n--; }
+	while (n) { ctb[di++ & 511] = 32; n--; }
 }
 
 /* Cancella tutto lo schermo del computer di bordo. */
 
 void clear_onboard_screen ()
 {
-	asm {
-		push ds
-		pop es
-		lea di, ctb
-		mov cx, 256
-		xor ax, ax
-		cld
-	    rep stosw
-	}
+	memset (ctb, 0, 512);
 }
 
 /* Gruppo di gestione del sistema operativo di bordo. */
@@ -443,7 +372,7 @@ void mswrite (Word screen_id, char *text)
 char gnc_pos = 0;			// Numero carattere in command line.
 Dword goesfile_pos = 0;			// Posizione sul file output di GOES.
 char goesnet_command[120] = "_";	// Command line di GOES Net.
-char *comm = "..\\DATA\\COMM.BIN";	// File di comunicazione dei moduli.
+const char *comm = "..\\DATA\\COMM.BIN";	// File di comunicazione dei moduli.
 Word roofspeed;
 /* Congela la situazione (all'uscita dal programma o al run di un modulo). */
 
@@ -452,14 +381,16 @@ void freeze ()
 	Word fh = _creat (situation_file, 0);
 	if (fh==-1) return;
 
-	_write (fh, &nsync, old_currentbin_length);
+	unsigned char sit[245];
+	situation_to_bytes (sit);
+	_write (fh, sit, old_currentbin_length);
 	_write (fh, &gnc_pos, 1);
 	_write (fh, &goesfile_pos, 4);
 	_write (fh, goesnet_command, 120);
-	WRITEFILE (fh, &lastSnapshot, sizeof(lastSnapshot));				//36
-	WRITEFILE (fh, &option_mouseLook, sizeof(option_mouseLook));				//40
-	WRITEFILE (fh, &roofspeed, sizeof(roofspeed));
-	WRITEFILE (fh, &option_antialias_in_stardrifter, sizeof(option_antialias_in_stardrifter));
+	_write (fh, &lastSnapshot, 4);
+	_write (fh, &option_mouseLook, 1);
+	_write (fh, &roofspeed, 2);
+	_write (fh, &option_antialias_in_stardrifter, 1);
 	_close (fh);
 }
 
@@ -472,39 +403,24 @@ void run_goesnet_module ()
 	// Salva la situazione perch' alcuni moduli ne hanno bisogno.
 	freeze ();
 
-	// Libera circa 60 kilobytes per il lancio del modulo eseguibile.
-	farfree (adapted);
-
 	// Verifica comandi residenti.
 	if (!memcmp (goesnet_command, "CLR", 3)) {
 		remove (goesoutputfile);
-		goto solong;
-	}
-
-	ch = _creat (goesoutputfile, 0);
-	if (ch > -1) {
-		_write (ch, "(UNKNOWN MODULE)", 16);
-		_close (ch);
-	}
-
-	// Cancella l'ultimo carattere (che ' il _ cursore) dalla command
-	// line, poi aggiunge la redirezione sul file "goesfile.txt"
-	goesnet_command[gnc_pos] = 0;
-	strcat (goesnet_command, " >");
-	strcat (goesnet_command, goesoutputfile);
-	system (goesnet_command);
-
-	// Ri-alloca l'area temporaneamente liberata.
-solong:	adapted = (unsigned char *) farmalloc (sc_bytes);
-
-	if (!adapted) {
-		_80_25_C ();
-		printf ("Sorry, GOES Net crashed.\n");
-		printf ("System integrity compromised: any key to quit.\n\n");
-		attendi_pressione_tasto();
-		exit (0xFF);
 	}
 	else {
+		ch = _creat (goesoutputfile, 0);
+		if (ch > -1) {
+			_write (ch, "(UNKNOWN MODULE)", 16);
+			_close (ch);
+		}
+		// Cancella l'ultimo carattere (che e' il _ cursore) dalla command
+		// line ed esegue il modulo, con l'output su "goesfile.txt".
+		// (Linux port: GOES modules are built into the executable.)
+		goesnet_command[gnc_pos] = 0;
+		goes_execute (goesnet_command, goesoutputfile);
+	}
+
+	{
 		QUADWORDS = 80 * 10;
 		pclear (adaptor, 0);
 		QUADWORDS = 16000 - 80 * 12;
@@ -516,7 +432,9 @@ solong:	adapted = (unsigned char *) farmalloc (sc_bytes);
 			if (filelength(ch) == 2) {
 				if (ap_reached) {
 					if (pwr > 15000) {
-						if (_read (ch, &ip_targetted, 2) == 2) {
+						Word tgt;
+						if (_read (ch, &tgt, 2) == 2) {
+							ip_targetted = (char)tgt;
 							ip_targetted--;
 							fix_local_target ();
 							ip_targetting = 0;
@@ -575,7 +493,7 @@ void squaredot (float x, float y, float size, unsigned char color)
 	poly3d (vx, vy, vz, 4, color);
 }
 
-Dword pp[32]= { 0x00000001, 0x00000002, 0x00000004, 0x00000008,
+Udword pp[32]= { 0x00000001, 0x00000002, 0x00000004, 0x00000008,
 	       0x00000010, 0x00000020, 0x00000040, 0x00000080,
 	       0x00000100, 0x00000200, 0x00000400, 0x00000800,
 	       0x00001000, 0x00002000, 0x00004000, 0x00008000,
@@ -750,7 +668,7 @@ Word goesk_e = -1;
 void vehicle (float opencapcount)
 {
 	Word   n, c, i, j, k, screenfile;
-	char  short_text[11];
+	char  short_text[32];
 	unsigned char chcol;
 
 	float backup_cam_x, backup_cam_z;
@@ -865,7 +783,7 @@ void vehicle (float opencapcount)
 					goesnet_command[gnc_pos+2] = 0;
 					gnc_pos++;
 				}
-			    non_valido:
+			    non_valido:;
 			}
 		}
 		_fmemset (osscreen[0]+3*21, 0, 4*21);
@@ -1188,7 +1106,6 @@ Word moviepaused=0;
 
 char about = 0;
 
-unsigned char * ctrlkeys     = (unsigned char *) 0x00000417;
 
 char   aso_countdown = 100;	// contatore per la funzione "autoscreenoff"
 Dword   tgt_label_pos = -1;	// posizione etichetta target selezionato
@@ -1213,14 +1130,14 @@ Dword   star_label_pos = -1, planet_label_pos = -1;
 
 double star_id = 12345;
 char   star_label[25] = "UNKNOWN STAR / CLASS ...";
-char   star_no_label[24] = "UNKNOWN STAR / CLASS ...";
+char   star_no_label[25] = "UNKNOWN STAR / CLASS ...";
 
 double planet_id = 12345;
 char   planet_label[25] = "NAMELESS PLANET / N. ...";
-char   planet_no_label[24] = "NAMELESS PLANET / N. ...";
-char   moon_no_label[24] =   "NAMELESS MOON #../../...";
+char   planet_no_label[25] = "NAMELESS PLANET / N. ...";
+char   moon_no_label[25] =   "NAMELESS MOON #../../...";
 
-char   *sr_message = "SYSTEM RESET";
+const char   *sr_message = "SYSTEM RESET";
 
 void update_star_label ()
 {
@@ -1234,12 +1151,15 @@ void update_star_label ()
 					if (star_label_pos != -1) {
 						smh = _open (starmap_file, 0);
 						lseek (smh, star_label_pos, SEEK_SET);
-						_read (smh, &star_id, 32);
+						unsigned char rec[32];
+						_read (smh, rec, 32);
+						memcpy (&star_id, rec, 8);
+						memcpy (star_label, rec + 8, 24);
 						_close (smh);
 					}
 					else
 						memcpy (star_label, star_no_label, 24);
-					srand (ap_target_id); sprintf (star_label+21, "S%02d", random (star_classes));
+					srand (ap_target_id); snprintf (star_label+21, 4, "S%02d", random (star_classes));
 				}
 			}
 }
@@ -1253,7 +1173,10 @@ void update_planet_label ()
 				if (planet_label_pos != -1) {
 					smh = _open (starmap_file, 0);
 					lseek (smh, planet_label_pos, SEEK_SET);
-					_read (smh, &planet_id, 32);
+					unsigned char rec[32];
+					_read (smh, rec, 32);
+					memcpy (&planet_id, rec, 8);
+					memcpy (planet_label, rec + 8, 24);
 					_close (smh);
 				}
 				else {
@@ -1267,7 +1190,7 @@ void update_planet_label ()
 						planet_label[20] = '&';
 					}
 				}
-				sprintf (planet_label+21, "P%02d", ip_targetted + 1);
+				snprintf (planet_label+21, 4, "P%02d", ip_targetted + 1);
 			}
 }
 
@@ -1584,15 +1507,9 @@ void devices ()
 			lsecs = secs; lsecs %= 1000;
 			other (formatTriad(lsecs));
 			cline (2, "parsis universal coordinates: ");
-			asm {	fld dzat_x
-				frndint
-				fstp parsis_x
-				fld dzat_y
-				frndint
-				fstp parsis_y
-				fld dzat_z
-				frndint
-				fstp parsis_z }
+			parsis_x = nearbyint (dzat_x);
+			parsis_y = nearbyint (dzat_y);
+			parsis_z = nearbyint (dzat_z);
 			other (alphavalue(parsis_x));
 			other (";");
 			other (alphavalue(-parsis_y));
@@ -1621,7 +1538,7 @@ void devices ()
 
 /* Comandi dei dispositivi di bordo. */
 
-char dummy_identity[8] = "Removed:";
+char dummy_identity[9] = "Removed:";
 char comp_data[32];
 
 void dev_commands ()
@@ -1754,7 +1671,10 @@ void dev_commands ()
 									}}
 								lseek (smh, 0, SEEK_END);
 								star_label_pos = tell(smh);
-								_write (smh, &star_id, 32);
+								unsigned char rec[32];
+								memcpy (rec, &star_id, 8);
+								memcpy (rec + 8, star_label, 24);
+								_write (smh, rec, 32);
 								_close (smh);
 								status ("ASSIGNED", 50);
 								nearstar_labeled++;
@@ -1815,7 +1735,10 @@ void dev_commands ()
 									}}
 								lseek (smh, 0, SEEK_END);
 								planet_label_pos = tell(smh);
-								_write (smh, &planet_id, 32);
+								unsigned char rec[32];
+								memcpy (rec, &planet_id, 8);
+								memcpy (rec + 8, planet_label, 24);
+								_write (smh, rec, 32);
 								_close (smh);
 								status ("ASSIGNED", 50);
 								nearstar_labeled++;
@@ -1980,15 +1903,16 @@ void unfreeze ()
 
 	fh = _open (situation_file, 0);
 	if (fh>-1) {
-		_read (fh, &nsync, 245);
+		unsigned char sit[245];
+		if (_read (fh, sit, 245) == 245) situation_from_bytes (sit);
 		_read (fh, &gnc_pos, 1);
 		_read (fh, &goesfile_pos, 4);
 		_read (fh, goesnet_command, 120);
-		READFILE (fh, &lastSnapshot, sizeof(lastSnapshot));				//36
-		READFILE (fh, &option_mouseLook, sizeof(option_mouseLook));				//40
-		READFILE (fh, &roofspeed, sizeof(roofspeed));
-		READFILE (fh, &option_antialias_in_stardrifter, sizeof(option_antialias_in_stardrifter));
-		strcpy(fcs_status_extended, fcs_status_extended);
+		goesnet_command[119] = 0;
+		_read (fh, &lastSnapshot, 4);
+		_read (fh, &option_mouseLook, 1);
+		_read (fh, &roofspeed, 2);
+		_read (fh, &option_antialias_in_stardrifter, 1);
 		_close (fh);
 	}
 	else
@@ -2058,15 +1982,6 @@ void unfreeze ()
 	pwr = dpwr;
 }
 
-/* Gestione errori hardware. */
-
-#pragma warn -par
-Word caught_somewhere_in_time (Word errval, Word ax, Word bp, Word si)
-{
-	hardresume (_HARDERR_FAIL);
-	return (2);
-}
-#pragma warn +par
 
 /* Programma principale. */
 
@@ -2085,13 +2000,11 @@ float starmass_correction[star_classes] = {
     15000.00  // classe 11
 };
 
-extern Uword _stklen = 0x1800;
-
-void main ()
+int noctis_main ()
 {
 	float satur, DfCoS;
      //	float user_drawing_range;
-	char *planetd[] = { "INTERNALLY HOT",
+	const char *planetd[] = { "INTERNALLY HOT",
 				   "CRATERIZED NO ATMOSPHERE",
 				   "THICK ATMOSPHERE",
 				   "FELISIAN",
@@ -2120,7 +2033,7 @@ void main ()
 
 	char leftturn, rightturn, arrowcolor, farstar = 0;
 
-	char temp_distance_buffer[16];
+	char temp_distance_buffer[32];
 
 	Uword pqw;
 	float hold_z;
@@ -2128,17 +2041,16 @@ void main ()
 	float tmp_float;
 	Dword p1, p2, p3, p4;
 
-	harderr (caught_somewhere_in_time);
 
 	for (ir = 0; ir < 200; ir ++) m200[ir] = ir * 200;
 
 	if (!test_and_init_mouse()) {
 		printf ("\nMouse not present or mouse driver not installed.\n");
-		return;
+		return 1;
 	}
 
 	n_offsets_map = (unsigned char *) farmalloc (om_bytes);
-	n_globes_map  = (char *) farmalloc ((Uword)gl_bytes+(Uword)gl_brest);
+	n_globes_map  = (unsigned char *) farmalloc ((Uword)gl_bytes+(Uword)gl_brest);
 	s_background  = (unsigned char *) farmalloc (st_bytes);
 	p_background  = (unsigned char *) farmalloc (pl_bytes);
 	p_surfacemap  = (unsigned char *) farmalloc (ps_bytes);
@@ -2157,7 +2069,7 @@ void main ()
 		lrv = loadpv (vehicle_handle, vehicle_ncc, 15, 15, 15, 0, 0, 0, 0, 1);
 		if (lrv < 1) {
 			printf ("\nLoad error.\n");
-			return;
+			return 1;
 		}
 		load_QVRmaps ();
 		load_starface ();
@@ -2167,7 +2079,7 @@ void main ()
 		printf ("\nNot enough free conventional memory to run.");
 		printf ("\nType MEM and hit ENTER to check it out.");
 		printf ("\n550 KB are needed to run Noctis!\n");
-		return;
+		return 1;
 	}
 
 	//tweakedVGA (X320Y200C4YPAL); // INIZIALIZZAZIONE GRAFICA.
@@ -2333,7 +2245,11 @@ void main ()
 				case 25: mslocate (0, 0, 2);
 					 mswrite (0, "SESSION ID ");
 					 fast_srand (secs * 18);
-					 sprintf (temp_distance_buffer, "%05lu%05lu", fast_random (0x7FFF), fast_random (0x7FFF));
+					 { // (arguments evaluated right to left, as in Borland C++)
+					 	auto _seq3 = fast_random (0x7FFF);
+					 	auto _seq2 = fast_random (0x7FFF);
+					 	sprintf (temp_distance_buffer, "%05u%05u", (unsigned)_seq2, (unsigned)_seq3);
+					 }
 					 mswrite (0, temp_distance_buffer);
 					 break;
 				case 10: status ("STANDBY", 100);
@@ -3007,7 +2923,7 @@ void main ()
 								p2 = p1 / 1000; p2 /= 1000;
 								p3 = p1 / 1000; p3 %= 1000;
 								p4 = p1 % 1000;
-								sprintf (outhudbuffer, "TRIADS %03ld:%03ld:%03ld", p2, p3, p4);
+								sprintf (outhudbuffer, "TRIADS %03d:%03d:%03d", p2, p3, p4);
 								wrouthud (14, 103, c, outhudbuffer);
 							}
 							else {
@@ -3031,12 +2947,12 @@ void main ()
 						p3 = tmp_float * 1e-3; p3 %= 1000;
 						p4 = (Dword)(tmp_float) % 1000;
 						if (p1 < 2)
-							sprintf (outhudbuffer, "%ld EPOCS, %03ld:%03ld:%03ld", p1, p2, p3, p4);
+							sprintf (outhudbuffer, "%d EPOCS, %03d:%03d:%03d", p1, p2, p3, p4);
 						else {
 							if (p1 < 2047)
-								sprintf (outhudbuffer, "%ld EPOCS, %03ld:%03ld:???", p1, p2, p3);
+								sprintf (outhudbuffer, "%d EPOCS, %03d:%03d:???", p1, p2, p3);
 							else
-								sprintf (outhudbuffer, "%ld EPOCS, %03ld:???:???", p1, p2);
+								sprintf (outhudbuffer, "%d EPOCS, %03d:???:???", p1, p2);
 						}
 						wrouthud (14, 116, c, outhudbuffer);						
 						sprintf (outhudbuffer, "       %s", planetd[nearstar_p_type[ip_targetted]]);						
@@ -3076,7 +2992,7 @@ void main ()
 					}
 					else
 						ir = 0;
-					sprintf (outhudbuffer, "LI+ IONS: %ld MTPD EST.", ir);
+					sprintf (outhudbuffer, "LI+ IONS: %d MTPD EST.", ir);
 					wrouthud (14, 119, c, outhudbuffer);
 					tmp_float = 50 + random (10) - random (10);
 					tmp_float *= (1 - eclipse);
@@ -3126,26 +3042,11 @@ void main ()
 		if ((ip_targetted != -1 && !ip_reached) || ip_targetting) {
 			planet_xyz (ip_targetted);
 			if (far_pixel_at (plx, ply, plz, 0, 1)) {
-				asm {   les di, dword ptr adapted
-					add di, vptr
-					sub di, 640
-					mov al, 126
-					mov es:[di-7], al
-					mov es:[di-6], al
-					mov es:[di-5], al
-					mov es:[di-4], al
-					mov es:[di+4], al
-					mov es:[di+5], al
-					mov es:[di+6], al
-					mov es:[di+7], al
-					mov es:[di-320*7], al
-					mov es:[di-320*6], al
-					mov es:[di-320*5], al
-					mov es:[di-320*4], al
-					mov es:[di+320*4], al
-					mov es:[di+320*5], al
-					mov es:[di+320*6], al
-					mov es:[di+320*7], al }
+				Uword di = vptr - 640;
+				static const Word d[16] = { -7, -6, -5, -4, 4, 5, 6, 7,
+					-320*7, -320*6, -320*5, -320*4, 320*4, 320*5, 320*6, 320*7 };
+				for (Word k = 0; k < 16; k++)
+					adapted[(Uword)(di + d[k])] = 126;
 			}
 		}
 		//
@@ -3589,7 +3490,7 @@ void main ()
 		 while (resolve <= 63) {
 			tavola_colori (return_palette, 0, 256,
 				       resolve, resolve, resolve);
-			ir = clock(); while (ir == clock());
+			dos_wait_tick ();
 			resolve+=4;
 		 }
 		}
@@ -3906,10 +3807,10 @@ void main ()
 					if (moviestat == 0){
 						moviestat = 1;
 						
-						char tempsnapfile[24];
+						char tempsnapfile[64];
 						if (movieexists == 0)
 						{								//let's check if the moviedeck exists already.... But only if the moviedeck has been changed lately.
-							//wrouthud (10,90, NULL, "CHECKING!!!");
+							//wrouthud (10, 90, 0, "CHECKING!!!");
 							sprintf (tempsnapfile, "..\\MOVIES\\%03i\\00000001.BMP", moviedeck);
 							FILE * tmpFile = fopen(tempsnapfile, "r");
 							if (tmpFile == NULL) {
@@ -3917,9 +3818,9 @@ void main ()
 							} else {
 								movieexists = 2;
 							}
-							fclose(tmpFile);
+							if (tmpFile) fclose(tmpFile);
 						}
-						char  short_text[11];
+						char  short_text[32];
 						if (movieexists == 2)
 						{
 							sprintf (short_text, "%i EXISTS", moviedeck);
@@ -3939,7 +3840,7 @@ void main ()
 				if (c==144 && moviestat && !movie) {					//add 1 to moviedeck
 					if (moviedeck < 999) {
 						moviedeck++;
-						char tempsnapfile[24];
+						char tempsnapfile[64];
 						sprintf (tempsnapfile, "..\\MOVIES\\%03i\\00000001.BMP", moviedeck);
 						FILE * tmpFile = fopen(tempsnapfile, "r");
 						if (tmpFile == NULL) {
@@ -3947,8 +3848,8 @@ void main ()
 						} else {
 							movieexists = 2;
 						}
-						fclose(tmpFile);
-						char  short_text[11];
+						if (tmpFile) fclose(tmpFile);
+						char  short_text[32];
 						if (movieexists == 2)
 						{
 							sprintf (short_text, "%i EXISTS", moviedeck);
@@ -3966,7 +3867,7 @@ void main ()
 				if (c==142 && moviestat && !movie ) {					//substract 1 from moviedeck
 					if (moviedeck > 1) {
 						moviedeck--;
-						char tempsnapfile[24];
+						char tempsnapfile[64];
 						sprintf (tempsnapfile, "..\\MOVIES\\%03i\\00000001.BMP", moviedeck);
 						FILE * tmpFile = fopen(tempsnapfile, "r");
 						if (tmpFile == NULL) {
@@ -3974,8 +3875,8 @@ void main ()
 						} else {
 							movieexists = 2;
 						}
-						fclose(tmpFile);
-						char  short_text[11];
+						if (tmpFile) fclose(tmpFile);
+						char  short_text[32];
 						if (movieexists == 2)
 						{
 							sprintf (short_text, "%i EXISTS", moviedeck);
@@ -4042,14 +3943,14 @@ void main ()
 				if (c=='+' && moviestat && moviefsec < 999 && !movie)
 				{
 					moviefsec++;
-					char  short_text[11];
+					char  short_text[32];
 					sprintf (short_text, "CAPT %i FR", moviefsec);
 					status(short_text,100);
 				}
 				if (c=='-' && moviestat && moviefsec > 1 && !movie )
 				{
 					moviefsec--;
-					char  short_text[11];
+					char  short_text[32];
 					sprintf (short_text, "CAPT %i FR", moviefsec);
 					status(short_text,100);
 				}
@@ -4351,7 +4252,7 @@ void main ()
 					}
 				}
 			}
-	endmain: 
+	endmain:; 
 		
 		
 		
@@ -4359,7 +4260,7 @@ void main ()
 		}
 		else
 			c = 0;
-	} while ((c != 27) || stspeed || ip_reaching || lifter);
+	} while (((c != 27) || stspeed || ip_reaching || lifter) && !port_quit_requested ());
 
 	remove (surface_file);
 
@@ -4367,35 +4268,36 @@ void main ()
 	_80_25_C ();
 
 	freeze ();
+	return 0;
 }
 
 void ShowAboutPage(char surface) {
 	areaclear(adapted, 5, 5, 315, 195, 0, 0, 0);
 	areaclear(adapted, 11, 10, 310, 32, 0, 0, 80);
-	wrouthud (14, 12, NULL, "                               NOCTIS IV PLUS");
-	wrouthud (14, 19, NULL, "                      BY MEGA, NEUZD, SL, AND OTHERS");
-	wrouthud (14, 26, NULL, "     MODIFIED VERSION OF NOCTIS - A PROGRAM MADE BY ALESSANDRO GHIGNOLA.");
+	wrouthud (14, 12, 0, "                               NOCTIS IV PLUS");
+	wrouthud (14, 19, 0, "                      BY MEGA, NEUZD, SL, AND OTHERS");
+	wrouthud (14, 26, 0, "     MODIFIED VERSION OF NOCTIS - A PROGRAM MADE BY ALESSANDRO GHIGNOLA.");
 	areaclear (adapted, 11, 35, 310, 44, 0, 0, 72);
 	areaclear (adapted, 11, 45, 310, 168, 0, 0, 112);
 	if (surface) {
-		wrouthud (14, 37, NULL, "SURFACE SHORTCUT KEYS:");
-		wrouthud (14,53, NULL,  "0-9 - MOVEMENT SPEED");
-		wrouthud (14,59, NULL,   "J - JUMP                                    L - LAND ON SURFACE");
-		wrouthud (14,65, NULL,   "SPACE - JETPACK                             C - DISENGAGE JETPACK CONTROL");
-		wrouthud (14,71, NULL,   "M OR ASTERISK - SNAPSHOT                    N OR / - WIDE SNAPSHOT");
-		wrouthud (14,77, NULL,   "B OR DELETE - RAW SNAPSHOT");
-		wrouthud (14,83, NULL,   "F3 - MOVIEMAKER");
-		wrouthud (14,89, NULL,  "UP ARROW - TOGGLE MOUSELOOK");
+		wrouthud (14, 37, 0, "SURFACE SHORTCUT KEYS:");
+		wrouthud (14, 53, 0,  "0-9 - MOVEMENT SPEED");
+		wrouthud (14, 59, 0,   "J - JUMP                                    L - LAND ON SURFACE");
+		wrouthud (14, 65, 0,   "SPACE - JETPACK                             C - DISENGAGE JETPACK CONTROL");
+		wrouthud (14, 71, 0,   "M OR ASTERISK - SNAPSHOT                    N OR / - WIDE SNAPSHOT");
+		wrouthud (14, 77, 0,   "B OR DELETE - RAW SNAPSHOT");
+		wrouthud (14, 83, 0,   "F3 - MOVIEMAKER");
+		wrouthud (14, 89, 0,  "UP ARROW - TOGGLE MOUSELOOK");
 	} else {
-		wrouthud (14, 37, NULL, "SHORTCUT KEYS (WHEN IN SPACE):");
-		wrouthud (14, 53, NULL, "M OR ASTERISK - SNAPSHOT                     B - RAW SNAPSHOT");
-		wrouthud (14, 59, NULL, "F3 - MOVIEMAKER");
-		wrouthud (14, 65, NULL, "TAB - TOGGLE ANTIALIASING");
-		wrouthud (14, 71, NULL, "S - TOGGLE ROOFSPEED");
+		wrouthud (14, 37, 0, "SHORTCUT KEYS (WHEN IN SPACE):");
+		wrouthud (14, 53, 0, "M OR ASTERISK - SNAPSHOT                     B - RAW SNAPSHOT");
+		wrouthud (14, 59, 0, "F3 - MOVIEMAKER");
+		wrouthud (14, 65, 0, "TAB - TOGGLE ANTIALIASING");
+		wrouthud (14, 71, 0, "S - TOGGLE ROOFSPEED");
 	}
 	areaclear (adapted, 11, 178, 310, 188, 0, 0, 72);
 	if (charge<0) {
-		wrouthud (14,160, NULL, "           THIS STARDRIFTER IS EQUIPPED WITH THE OMEGA DRIVE       ");
+		wrouthud (14, 160, 0, "           THIS STARDRIFTER IS EQUIPPED WITH THE OMEGA DRIVE       ");
 	}
-	wrouthud (14,180, NULL, "RELEASE 2.3");
+	wrouthud (14, 180, 0, "RELEASE 2.3");
 }

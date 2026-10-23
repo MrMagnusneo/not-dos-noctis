@@ -18,6 +18,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <cmath>
+#include <string>
 
 /* ------------------------------------------------------------------ */
 /* State                                                               */
@@ -496,11 +497,39 @@ void plat_set_palette(const uint8_t *rgb6, int first, int count)
 	g_dirty = 1;
 }
 
+/* Testing aids (environment variables):
+     NOCTIS_FRAMEDUMP=<dir>   write every 18th presented frame as PPM
+     NOCTIS_FRAMEDUMP_EVERY=n dump every n-th frame instead
+     NOCTIS_SCRIPT=<list>     inject input: "ms:key;ms:key" where key is a
+                              character, ESC, ENTER, F1..F10, UP/DOWN/LEFT/RIGHT,
+                              or QUIT */
+static void frame_dump(void)
+{
+	static const char *dir = getenv("NOCTIS_FRAMEDUMP");
+	static int counter = 0;
+	static int every = getenv("NOCTIS_FRAMEDUMP_EVERY") ? atoi(getenv("NOCTIS_FRAMEDUMP_EVERY")) : 18;
+	if (!dir) return;
+	if (every < 1) every = 1;
+	if (counter++ % every) return;
+	char name[512];
+	snprintf(name, sizeof(name), "%s/frame%05d.ppm", dir, counter / every);
+	FILE *f = fopen(name, "wb");
+	if (!f) return;
+	fprintf(f, "P6\n320 200\n255\n");
+	for (int i = 0; i < 320 * 200; i++) {
+		uint32_t c = g_rgba[i];
+		unsigned char px[3] = { (unsigned char)c, (unsigned char)(c >> 8), (unsigned char)(c >> 16) };
+		fwrite(px, 1, 3, f);
+	}
+	fclose(f);
+}
+
 void plat_present(const uint8_t *vram)
 {
 	if (vram) g_vram = vram;
 	if (!g_window) return;
 	convert_frame();
+	frame_dump();
 	if (g_sdlren) sdl_present();
 	else gl_present();
 	g_dirty = 0;
@@ -722,8 +751,39 @@ static void translate_key(const SDL_Keysym *ks)
 /* Events                                                              */
 /* ------------------------------------------------------------------ */
 
+static void key_ext(int scan);
+static void keyq_push(int k);
+
+static void run_script(void)
+{
+	static const char *script = getenv("NOCTIS_SCRIPT");
+	static const char *pos = script;
+	if (!pos || !*pos) return;
+	long when = strtol(pos, nullptr, 10);
+	if ((long)SDL_GetTicks64() < when) return;
+	const char *colon = strchr(pos, ':');
+	if (!colon) { pos = nullptr; return; }
+	const char *end = strchr(colon, ';');
+	std::string key(colon + 1, end ? end - colon - 1 : strlen(colon + 1));
+	if (key == "ESC") keyq_push(27);
+	else if (key == "ENTER") keyq_push(13);
+	else if (key == "QUIT") g_quit = 1;
+	else if (key == "UP") key_ext(0x48);
+	else if (key == "DOWN") key_ext(0x50);
+	else if (key == "LEFT") key_ext(0x4B);
+	else if (key == "RIGHT") key_ext(0x4D);
+	else if (key == "LCLICK") g_mouse_clicked |= 1;
+	else if (key == "RCLICK") g_mouse_clicked |= 2;
+	else if (key.rfind("MX", 0) == 0) g_mouse_acc_x += atoi(key.c_str() + 2);
+	else if (key.rfind("MY", 0) == 0) g_mouse_acc_y += atoi(key.c_str() + 2);
+	else if (key[0] == 'F' && key.size() > 1) key_ext(0x3B + atoi(key.c_str() + 1) - 1);
+	else for (char c : key) keyq_push((unsigned char)c);
+	pos = end ? end + 1 : nullptr;
+}
+
 void plat_pump(void)
 {
+	run_script();
 	SDL_Event ev;
 	while (SDL_PollEvent(&ev)) {
 		switch (ev.type) {

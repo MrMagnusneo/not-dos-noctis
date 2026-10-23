@@ -2110,7 +2110,7 @@ void background (Uword start,
 /* The pseudo-random star field: each sector of 100000 units contains at
    most one star, whose position derives from the sector coordinates
    through this hash. It must match the original bit for bit. */
-static inline char star_in_sector (Dword sect_x, Dword sect_y, Dword sect_z,
+char star_in_sector (Dword sect_x, Dword sect_y, Dword sect_z,
 				   Dword *sx, Dword *sy, Dword *sz)
 {
 	Udword eax = (Udword)sect_x + (Udword)sect_z;
@@ -2965,7 +2965,13 @@ void extract_ap_target_infos ()
 
 /* Estrae un numero pseudo-casuale di tipo intero convertendolo a f-p. */
 
-float zrandom (Word range) { return (random(range) - random(range)); }
+float zrandom (Word range)
+{
+	// (left operand first, like the Borland code generator)
+	Word first = random (range);
+	Word second = random (range);
+	return (first - second);
+}
 template <typename T> static inline float zrandom_any (T range) { return zrandom (to_i16 (range)); }
 
 /* Cerca un codice d'identificazione (per un pianeta o per una stella)
@@ -3557,7 +3563,7 @@ void storm () // tempesta (una grande macchia chiara sull'atmosfera).
 }
 
 /* Random pattern generator used for planetary and stellar surfaces. */
-static void random_pattern (unsigned char *dest, Uword count, Uword seed, unsigned char mask)
+void random_pattern (unsigned char *dest, Uword count, Uword seed, unsigned char mask)
 {
 	Uword ax = seed;
 	for (Uword cnt = count; cnt; cnt--) {
@@ -3730,10 +3736,17 @@ void surface (Word logical_id, Word type,
 			break;
 		case 5: r = ranged_fast_random (3) + 4;
 			for (c=0; c<r; c++) ssmooth (p_background);
-			contrast ((float)ranged_fast_random(200) / 900 + 0.6,
-				  (float)ranged_fast_random(350) / 100 + 4.0,
-				  25 + ranged_fast_random(3));
-			randoface (5 + ranged_fast_random(3), -20 * (ranged_fast_random(3) + 1));
+			{ // (arguments evaluated right to left, as in Borland C++)
+				auto _seq2 = 25 + ranged_fast_random(3);
+				auto _seq1 = (float)ranged_fast_random(350) / 100 + 4.0;
+				auto _seq0 = (float)ranged_fast_random(200) / 900 + 0.6;
+				contrast (_seq0, _seq1, _seq2);
+			}
+			{ // (arguments evaluated right to left, as in Borland C++)
+				auto _seq1 = -20 * (ranged_fast_random(3) + 1);
+				auto _seq0 = 5 + ranged_fast_random(3);
+				randoface (_seq0, _seq1);
+			}
 			r = 5 + ranged_fast_random (5);
 			for (c=0; c<r; c++) {
 				cr = 5 + ranged_fast_random (10);

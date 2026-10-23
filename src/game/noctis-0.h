@@ -276,7 +276,6 @@ extern Dword flat_rnd_seed;
 extern void fast_srand (Dword seed);
 static inline void fast_srand (double seed) { fast_srand ((Dword)bc_ftol (seed)); }
 static inline void fast_srand (float seed) { fast_srand ((Dword)bc_ftol (seed)); }
-static inline void fast_srand (int seed) { fast_srand ((Dword)seed); }
 extern Dword fast_random (Dword mask);
 extern Word ranged_fast_random (Word range);
 extern Word sa_open (Dword offset_of_virtual_file);

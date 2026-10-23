@@ -125,6 +125,7 @@ int dos_close(int fh);
 int32_t dos_lseek(int fh, int32_t offset, int whence);
 int32_t dos_tell(int fh);
 int32_t dos_filelength(int fh);
+int dos_chsize(int fh, int32_t size);
 int dos_eof(int fh);
 int dos_remove(const char *path);
 int dos_mkdir(const char *path);

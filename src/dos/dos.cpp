@@ -396,6 +396,14 @@ int32_t dos_filelength(int fh)
 	return (int32_t)len;
 }
 
+int dos_chsize(int fh, int32_t size)
+{
+	FILE *f = get_handle(fh);
+	if (!f) return -1;
+	fflush(f);
+	return ftruncate(fileno(f), size);
+}
+
 int dos_eof(int fh)
 {
 	FILE *f = get_handle(fh);
@@ -502,10 +510,16 @@ void dos_get_datetime(int *year, int *month, int *day,
 /* Keyboard and mouse                                                  */
 /* ------------------------------------------------------------------ */
 
+/* When the window is closed the game is fed one ESC through kbhit() so
+   that "while (kbhit())" loops terminate; blocking reads keep returning
+   ESC so that no prompt can hang. */
+static int quit_esc_pending = 1;
+
 int dos_kbhit(void)
 {
 	pump_throttled();
-	return plat_key_available() || plat_quit_requested();
+	if (plat_key_available()) return 1;
+	return plat_quit_requested() && quit_esc_pending;
 }
 
 int dos_getkey(void)
@@ -513,7 +527,10 @@ int dos_getkey(void)
 	for (;;) {
 		plat_pump();
 		if (plat_key_available()) return plat_key_get();
-		if (plat_quit_requested()) return 27;
+		if (plat_quit_requested()) {
+			quit_esc_pending = 0;
+			return 27;
+		}
 		plat_sleep_ms(2);
 	}
 }

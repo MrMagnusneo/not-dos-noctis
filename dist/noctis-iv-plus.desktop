@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Noctis IV Plus
+Comment=Space exploration simulator (Linux port of Noctis IV Plus)
+Exec=noctis
+Terminal=false
+Categories=Game;Simulation;
